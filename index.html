@@ -303,6 +303,7 @@ if('serviceWorker' in navigator){
 <!-- ══ FIREBASE SDK (compat 版，可與一般 script 共存) ══ -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // ★ 請將以下設定換成您的 Firebase 專案設定 ★
@@ -322,9 +323,24 @@ if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
   try {
     firebase.initializeApp(firebaseConfig);
     const _db = firebase.firestore();
+    const _auth = firebase.auth();
+
+    // ★ 啟用離線持久化：讓 Firestore 將資料快取在瀏覽器本機
+    //   如此一來即使斷線或重新整理，已讀入的資料仍保留；
+    //   上線後會自動將離線期間的寫入同步回 Firebase。
+    _db.enablePersistence({ synchronizeTabs: true })
+      .then(() => console.log('[Firebase] 離線持久化已啟用 ✓'))
+      .catch(err => {
+        if (err.code === 'failed-precondition') {
+          console.warn('[Firebase] 多分頁模式，持久化限單一分頁');
+        } else if (err.code === 'unimplemented') {
+          console.warn('[Firebase] 此瀏覽器不支援離線持久化');
+        }
+      });
+
     window._FB = {
       db: _db,
-      // 統一介面，與原本程式碼相容
+      auth: _auth,
       doc: (db, ...path) => {
         let ref = db;
         for (let i = 0; i < path.length; i += 2) {
@@ -346,16 +362,40 @@ if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
       serverTimestamp: () => firebase.firestore.FieldValue.serverTimestamp(),
       deleteDoc: (ref) => ref.delete(),
     };
+
+    // ★ 匿名登入：確保每個使用者都有 Firebase UID，
+    //   Firestore 安全規則才能用 request.auth != null 來擋外部攻擊
+    window._fbAuthReady = new Promise((resolve) => {
+      _auth.onAuthStateChanged(user => {
+        if (user) {
+          console.log('[Firebase Auth] 匿名 UID:', user.uid);
+          window._fbUid = user.uid;
+          resolve(user);
+        } else {
+          _auth.signInAnonymously()
+            .then(cred => {
+              console.log('[Firebase Auth] 匿名登入成功 ✓ UID:', cred.user.uid);
+              window._fbUid = cred.user.uid;
+              resolve(cred.user);
+            })
+            .catch(e => {
+              console.warn('[Firebase Auth] 匿名登入失敗（離線？）:', e.message);
+              resolve(null); // 仍允許繼續，靠持久化快取運作
+            });
+        }
+      });
+    });
+
     console.log('[Firebase] 連線成功 ✓');
 
     // 啟動後即時監聽評審分數變動（涵蓋所有考場）
     window._startJuryListener = function(){
       try {
         DB.rooms.forEach(room => {
-          _db.collection('juryScores').doc(room.id)
+          const roomId = room.id; // ★ 修正：在外層 forEach 捕捉 roomId，避免 snapshot callback 內找不到 roomDoc
+          _db.collection('juryScores').doc(roomId)
             .collection('entries').onSnapshot(snapshot => {
                   snapshot.forEach(entryDoc => {
-                    const roomId = roomDoc.id;
                     const entryKey = entryDoc.id;
                     if (!window.DB) return;
                     if (!window.DB.juryScores[roomId]) window.DB.juryScores[roomId] = {};
@@ -369,7 +409,6 @@ if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
                     if (typeof renderResults === 'function') renderResults();
                   }
                 });
-          });
         });
       } catch(e) { console.warn('[Firebase] 監聽失敗:', e); }
     };
@@ -1452,9 +1491,13 @@ function launchApp(){
   document.body.appendChild(loadEl);
   const bar=document.getElementById('fb-bar');
   let prog=0;const progTimer=setInterval(()=>{prog=Math.min(prog+8,88);if(bar)bar.style.width=prog+'%';},120);
-  loadAllFromFirebase(()=>{
-    clearInterval(progTimer);if(bar)bar.style.width='100%';
-    setTimeout(()=>{loadEl.remove();buildNav();initDropdowns();renderAll();setTimeout(navFirst,80);if(window._startJuryListener)window._startJuryListener();},300);
+  // ★ 等匿名 Auth 完成後再讀 Firestore，確保安全規則 request.auth != null 成立
+  const authWait = window._fbAuthReady || Promise.resolve(null);
+  authWait.then(()=>{
+    loadAllFromFirebase(()=>{
+      clearInterval(progTimer);if(bar)bar.style.width='100%';
+      setTimeout(()=>{loadEl.remove();buildNav();initDropdowns();renderAll();setTimeout(navFirst,80);if(window._startJuryListener)window._startJuryListener();},300);
+    });
   });
 }
 
