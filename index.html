@@ -287,58 +287,84 @@ if('serviceWorker' in navigator){
 }
 </script>
 
-<!-- ══ FIREBASE SDK ══ -->
-<script type="module">
-import { initializeApp }          from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs,
-         onSnapshot, serverTimestamp, deleteDoc, writeBatch }
-  from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
+<!-- ══ FIREBASE SDK (compat 版，可與一般 script 共存) ══ -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script>
 // ══════════════════════════════════════════════
 // ★ 請將以下設定換成您的 Firebase 專案設定 ★
 // 取得位置：Firebase Console → 專案設定 → 您的應用程式
 // ══════════════════════════════════════════════
-const firebaseConfig = {
-  apiKey: "AIzaSyBkb1Nu96Dlp4I9826VfMsx0x6c1c9bgwk",
-  authDomain: "music-exam-8383f.firebaseapp.com",
-  projectId: "music-exam-8383f",
-  storageBucket: "music-exam-8383f.firebasestorage.app",
-  messagingSenderId: "690992878711",
-  appId: "1:690992878711:web:1451f18b51c6e03aa6a272"
+const _firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID",
 };
 
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-
-// 掛到全域讓其他 script 使用
-window._FB = { db, doc, setDoc, getDoc, collection, getDocs, onSnapshot, serverTimestamp, deleteDoc, writeBatch };
-
-console.log('[Firebase] 連線成功 ✓');
-
-// ── 啟動時從 Firestore 讀取設定資料 ──
-window.addEventListener('DOMContentLoaded', async () => {
+// 初始化 Firebase（只在有真實設定時才連線）
+if (_firebaseConfig.apiKey !== "YOUR_API_KEY") {
   try {
-    // 讀取評審分數（所有考場）
-    const roomSnap = await getDocs(collection(db, 'juryScores'));
-    roomSnap.forEach(roomDoc => {
-      // onSnapshot 即時監聽各考場分數變動
-      onSnapshot(collection(db, 'juryScores', roomDoc.id, 'entries'), snapshot => {
-        snapshot.forEach(entryDoc => {
-          const roomId = roomDoc.id;
-          const entryKey = entryDoc.id;
-          if (!window.DB?.juryScores[roomId]) window.DB.juryScores[roomId] = {};
-          window.DB.juryScores[roomId][entryKey] = entryDoc.data();
-        });
-        // 若結果頁開著就重新渲染
-        if (document.getElementById('pg-results')?.classList.contains('on')) {
-          if (typeof renderResults === 'function') renderResults();
+    firebase.initializeApp(_firebaseConfig);
+    const _db = firebase.firestore();
+    window._FB = {
+      db: _db,
+      // 統一介面，與原本程式碼相容
+      doc: (db, ...path) => {
+        let ref = db;
+        for (let i = 0; i < path.length; i += 2) {
+          ref = ref.collection(path[i]).doc(path[i+1]);
         }
-      });
+        return ref;
+      },
+      setDoc: (ref, data, opts) => opts?.merge ? ref.set(data, {merge:true}) : ref.set(data),
+      getDoc: (ref) => ref.get(),
+      collection: (db, ...path) => {
+        let ref = db;
+        for (let i = 0; i < path.length; i++) {
+          ref = i % 2 === 0 ? ref.collection(path[i]) : ref.doc(path[i]);
+        }
+        return ref;
+      },
+      getDocs: (ref) => ref.get(),
+      onSnapshot: (ref, cb) => ref.onSnapshot(cb),
+      serverTimestamp: () => firebase.firestore.FieldValue.serverTimestamp(),
+      deleteDoc: (ref) => ref.delete(),
+    };
+    console.log('[Firebase] 連線成功 ✓');
+
+    // 啟動後監聽評審分數變動
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        try {
+          _db.collection('juryScores').get().then(roomSnap => {
+            roomSnap.forEach(roomDoc => {
+              _db.collection('juryScores').doc(roomDoc.id)
+                .collection('entries').onSnapshot(snapshot => {
+                  snapshot.forEach(entryDoc => {
+                    const roomId = roomDoc.id;
+                    const entryKey = entryDoc.id;
+                    if (!window.DB) return;
+                    if (!window.DB.juryScores[roomId]) window.DB.juryScores[roomId] = {};
+                    window.DB.juryScores[roomId][entryKey] = entryDoc.data();
+                  });
+                  if (document.getElementById('pg-results')?.classList.contains('on')) {
+                    if (typeof renderResults === 'function') renderResults();
+                  }
+                });
+            });
+          }).catch(e => console.warn('[Firebase] 讀取分數失敗:', e));
+        } catch(e) { console.warn('[Firebase] 監聽失敗:', e); }
+      }, 500);
     });
   } catch(e) {
-    console.warn('[Firebase] 讀取初始資料失敗（可能是離線）:', e);
+    console.warn('[Firebase] 初始化失敗:', e);
   }
-});
+} else {
+  console.warn('[Firebase] 尚未填入設定，使用本機模式');
+}
 </script>
 </head>
 <body>
@@ -912,6 +938,7 @@ const DB = {
   }
 };
 
+window.DB = DB; // expose to Firebase callbacks
 const ST = {user:null,role:null,juryRoom:null,juryName:'',juryId:'',
   npTarget:null,npVal:'',npCallback:null,isOnline:navigator.onLine};
 
@@ -1180,8 +1207,8 @@ function submitRep(){
     Object.assign(ST.user, data);
     // Write to Firestore
     if(window._FB){
-      const {db,doc,setDoc,serverTimestamp}=window._FB;
-      setDoc(doc(db,'students',ST.user.id),{...data,updatedAt:serverTimestamp()},{merge:true})
+      const {db,serverTimestamp}=window._FB;
+      db.collection('students').doc(ST.user.id).set({...data,updatedAt:serverTimestamp()},{merge:true})
         .then(()=>showToast('曲目填報已送出並同步 ✓','ok'))
         .catch(()=>showToast('曲目填報已送出（離線）','warn'));
     } else { showToast('曲目填報已送出 ✓','ok'); }
@@ -1357,8 +1384,8 @@ function saveTeaComment(){
   const s=DB.users.find(u=>u.id===sid);if(s)s.teaDone=true;
   // Write to Firestore
   if(window._FB){
-    const {db,doc,setDoc,serverTimestamp}=window._FB;
-    setDoc(doc(db,'teacherComments',sid),{...DB.teacherComments[sid],updatedAt:serverTimestamp()},{merge:true})
+    const {db,serverTimestamp}=window._FB;
+    db.collection('teacherComments').doc(sid).set({...DB.teacherComments[sid],updatedAt:serverTimestamp()},{merge:true})
       .then(()=>showToast('評量已儲存並同步 ✓','ok'))
       .catch(()=>showToast('評量已儲存（離線）','warn'));
   } else { showToast('評量已儲存 ✓','ok'); }
@@ -1448,10 +1475,12 @@ function saveJCell(i,roomId,entryKey,field,val){
   // ── 3. 若有網路，即時寫入 Firestore ──
   if(ST.isOnline&&window._FB){
     showSyncStatus('sync','正在同步...');
-    const {db,doc,setDoc,serverTimestamp}=window._FB;
+    const {db,setDoc,serverTimestamp}=window._FB;
     // 路徑：juryScores/{roomId}/entries/{entryKey}/jurors/{jurorId}
-    const docRef=doc(db,'juryScores',roomId,'entries',entryKey,'jurors',myId);
-    setDoc(docRef,{...DB.juryScores[roomId][entryKey][myId],updatedAt:serverTimestamp()},{merge:true})
+    const docRef=db.collection('juryScores').doc(roomId)
+      .collection('entries').doc(entryKey)
+      .collection('jurors').doc(myId);
+    docRef.set({...DB.juryScores[roomId][entryKey][myId],updatedAt:serverTimestamp()},{merge:true})
       .then(()=>{unmarkPending(lsKey);showSyncStatus('ok','已同步 ✓');})
       .catch(()=>showSyncStatus('pend','離線暫存'));
   } else {
@@ -1476,7 +1505,7 @@ async function syncPendingToFirebase(){
   const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||'[]');
   if(!pending.length)return;
   showSyncStatus('sync',`同步 ${pending.length} 筆離線資料...`);
-  const {db,doc,setDoc,serverTimestamp}=window._FB;
+  const {db,serverTimestamp}=window._FB;
   let ok=0;
   for(const lsKey of pending){
     try{
@@ -1487,8 +1516,10 @@ async function syncPendingToFirebase(){
       const roomId=parts[0];
       const jurorId=parts[parts.length-1];
       const entryKey=parts.slice(1,parts.length-1).join('_');
-      const docRef=doc(db,'juryScores',roomId,'entries',entryKey,'jurors',jurorId);
-      await setDoc(docRef,{...data,syncedAt:serverTimestamp()},{merge:true});
+      const docRef=db.collection('juryScores').doc(roomId)
+        .collection('entries').doc(entryKey)
+        .collection('jurors').doc(jurorId);
+      await docRef.set({...data,syncedAt:serverTimestamp()},{merge:true});
       unmarkPending(lsKey);ok++;
     }catch(e){console.warn('sync error',lsKey,e);}
   }
