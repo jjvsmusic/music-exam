@@ -1313,22 +1313,30 @@ window.doChangePassword=doChangePassword;
 function fbSet(col, docId, data){
   if(!window._FB)return;
   const {db,serverTimestamp}=window._FB;
-  db.collection(col).doc(docId)
-    .set({...data, _updatedAt:serverTimestamp()},{merge:true})
-    .catch(e=>console.warn('[FB write]',col,docId,e));
+  // ★ 等 Auth 就緒後再寫入，確保安全規則通過
+  (window._fbAuthReady||Promise.resolve()).then(()=>{
+    db.collection(col).doc(docId)
+      .set({...data, _updatedAt:serverTimestamp()},{merge:true})
+      .catch(e=>console.warn('[FB write]',col,docId,e));
+  });
 }
 function fbDelete(col, docId){
   if(!window._FB)return;
   const {db}=window._FB;
-  db.collection(col).doc(docId).delete()
-    .catch(e=>console.warn('[FB delete]',col,docId,e));
+  (window._fbAuthReady||Promise.resolve()).then(()=>{
+    db.collection(col).doc(docId).delete()
+      .catch(e=>console.warn('[FB delete]',col,docId,e));
+  });
 }
 function fbLoad(col, cb){
   if(!window._FB){cb([]);return;}
   const {db}=window._FB;
-  db.collection(col).get()
-    .then(snap=>{const docs=[];snap.forEach(d=>docs.push({id:d.id,...d.data()}));cb(docs);})
-    .catch(e=>{console.warn('[FB load]',col,e);cb([]);});
+  // ★ 等 Auth 就緒後再讀取，確保安全規則通過
+  (window._fbAuthReady||Promise.resolve()).then(()=>{
+    db.collection(col).get()
+      .then(snap=>{const docs=[];snap.forEach(d=>docs.push({id:d.id,...d.data()}));cb(docs);})
+      .catch(e=>{console.warn('[FB load]',col,e);cb([]);});
+  });
 }
 
 // ════ 啟動時從 Firebase 讀回所有資料 ════
@@ -1468,6 +1476,8 @@ function loadAllFromFirebase(done){
   (function(){
     if(!window._FB){tick();return;}
     const db=window._FB.db;
+    // ★ 等 Auth 就緒後再讀取 juryScores
+    (window._fbAuthReady||Promise.resolve()).then(()=>{
     db.collection('juryScores').get().then(roomSnap=>{
       let roomCount=roomSnap.size;
       if(roomCount===0){tick();return;}
@@ -1488,6 +1498,7 @@ function loadAllFromFirebase(done){
           }).catch(()=>{roomCount--;if(roomCount<=0)tick();});
       });
     }).catch(()=>tick());
+    }); // end authReady.then
   })();
 }
 
@@ -2323,6 +2334,7 @@ function unmarkPending(lsKey){
 // ── 重新連線後批次同步所有 pending ──
 async function syncPendingToFirebase(){
   if(!window._FB)return;
+  if(window._fbAuthReady)await window._fbAuthReady; // ★ 等 Auth 就緒
   const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||'[]');
   if(!pending.length)return;
   showSyncStatus('sync',`同步 ${pending.length} 筆離線資料...`);
