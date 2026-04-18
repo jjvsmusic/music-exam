@@ -295,13 +295,13 @@ if('serviceWorker' in navigator){
 // ★ 請將以下設定換成您的 Firebase 專案設定 ★
 // 取得位置：Firebase Console → 專案設定 → 您的應用程式
 // ══════════════════════════════════════════════
-const _firebaseConfig = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID",
+const firebaseConfig = {
+  apiKey: "AIzaSyBkb1Nu96Dlp4I9826VfMsx0x6c1c9bgwk",
+  authDomain: "music-exam-8383f.firebaseapp.com",
+  projectId: "music-exam-8383f",
+  storageBucket: "music-exam-8383f.firebasestorage.app",
+  messagingSenderId: "690992878711",
+  appId: "1:690992878711:web:1451f18b51c6e03aa6a272"
 };
 
 // 初始化 Firebase（只在有真實設定時才連線）
@@ -838,6 +838,10 @@ if (_firebaseConfig.apiKey !== "YOUR_API_KEY") {
   </div><!-- /main -->
 </div><!-- /app -->
 <script>
+(function(){
+'use strict';
+
+function __init__(){
 // ════════════════════════════════════════════════
 // DATA
 // ════════════════════════════════════════════════
@@ -985,8 +989,26 @@ function doLogin(){
   if(!u){document.getElementById('l-err').textContent='帳號或密碼錯誤';return;}
   ST.user=u;ST.role=u.role;launchApp();
 }
-document.getElementById('l-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-document.getElementById('l-user').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+// Event listeners wrapped safely
+(function(){
+  function attachListeners(){
+    var lp=document.getElementById('l-pass');
+    var lu=document.getElementById('l-user');
+    var jc=document.getElementById('l-jury-code');
+    if(lp) lp.addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
+    if(lu) lu.addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
+    if(jc) jc.addEventListener('keydown',function(e){if(e.key==='Enter')doJuryDirectLogin();});
+    // overlay click-to-close
+    document.querySelectorAll('.overlay').forEach(function(o){
+      o.addEventListener('click',function(e){if(e.target===o)o.classList.remove('on');});
+    });
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',attachListeners);
+  } else {
+    attachListeners();
+  }
+})();
 
 function doJuryDirectLogin(){
   const code=document.getElementById('l-jury-code').value.trim().toUpperCase();
@@ -999,7 +1021,7 @@ function doJuryDirectLogin(){
   openOverlay('jury-name-modal');
   setTimeout(()=>document.getElementById('jn-name').focus(),200);
 }
-document.getElementById('l-jury-code').addEventListener('keydown',e=>{if(e.key==='Enter')doJuryDirectLogin();});
+// jury code listener handled above
 
 function doJuryLogin(){
   const name=document.getElementById('jn-name').value.trim();
@@ -2163,7 +2185,7 @@ function swUserTab(key,el){
 // ════════════════════════════════════════════════
 function openOverlay(id){document.getElementById(id)?.classList.add('on');}
 function closeOverlay(id){document.getElementById(id)?.classList.remove('on');}
-document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('on');}));
+// overlay listeners handled in attachListeners above
 
 function showToast(msg,type=''){
   const t=document.getElementById('toast');t.textContent=msg;t.className='toast on '+type;
@@ -2178,6 +2200,43 @@ function showSyncStatus(state,text){
 }
 // online handler 已移至 syncPendingToFirebase 區塊
 window.addEventListener('offline',()=>{ST.isOnline=false;document.getElementById('off-bar').classList.add('show');});
+
+// ════════════════════════════════════════════════
+// EXPOSE FUNCTIONS TO GLOBAL SCOPE (needed for onclick= in HTML)
+// ════════════════════════════════════════════════
+const _expose = [
+  'doLogin','doJuryDirectLogin','doJuryLogin','doLogout',
+  'closeOverlay','openOverlay','showToast',
+  'filterRepInst','toggleElective','previewRep','backToRepForm','submitRep','editRep',
+  'doLookup','clearLookup',
+  'openTeaModal','swTeaTab','saveTeaComment',
+  'checkJuryBeforeSubmit','submitJuryAll','confirmSubmitJury','toggleAbsent','saveJCell',
+  'generateSchedule','exportScheduleCSV','publishSchedule',
+  'swAdminTab','swUserTab',
+  'showAddUser','editUser','resetUserPwd','deleteUser','importCSV','downloadSample',
+  'addCategory','renameCategory','delCategory','addInstrument','renameInst','delInst',
+  'renderInstList',
+  'addRoom','editRoom','delRoom','revealCode',
+  'addClass','renameClass','delClass',
+  'saveTiming','saveAnnounce','saveWeights','addTrim',
+  'setAccess','saveRepHint','saveTyText','clearData',
+  'renderResults','editJuryScores','exportResultsCSV',
+  'npKey','npDel','npConfirm','npBg',
+  'openNP',
+];
+_expose.forEach(function(name){
+  try{ if(typeof eval(name)==='function') window[name]=eval(name); }catch(e){}
+});
+
+} // end __init__
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', __init__);
+} else {
+  __init__();
+}
+
+})();
 </script>
 </body>
 </html>
