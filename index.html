@@ -305,9 +305,9 @@ const firebaseConfig = {
 };
 
 // 初始化 Firebase（只在有真實設定時才連線）
-if (_firebaseConfig.apiKey !== "YOUR_API_KEY") {
+if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
   try {
-    firebase.initializeApp(_firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
     const _db = firebase.firestore();
     window._FB = {
       db: _db,
@@ -912,7 +912,7 @@ const DB = {
       major:'cello',minor:'piano',elective:null,
       major_ac:'Dvorak, A.',major_at:'Cello Concerto Op.104, 1st mvt.',
       major_fc:'Bach, J.S.',major_ft:'Suite No.1 BWV 1007',
-      minor_ac:'Ravel, M.',minor_at:'Jeux d\'eau',
+      minor_ac:'Ravel, M.',minor_at:"Jeux d'eau",
       minor_fc:'Liszt, F.',minor_ft:'Liebestraum No.3',
       repDone:true,teaDone:true},
   ],
@@ -989,6 +989,7 @@ function doLogin(){
   if(!u){document.getElementById('l-err').textContent='帳號或密碼錯誤';return;}
   ST.user=u;ST.role=u.role;launchApp();
 }
+window.doLogin=doLogin;
 // Event listeners wrapped safely
 (function(){
   function attachListeners(){
@@ -1021,7 +1022,7 @@ function doJuryDirectLogin(){
   openOverlay('jury-name-modal');
   setTimeout(()=>document.getElementById('jn-name').focus(),200);
 }
-// jury code listener handled above
+window.doJuryDirectLogin=doJuryDirectLogin;
 
 function doJuryLogin(){
   const name=document.getElementById('jn-name').value.trim();
@@ -1033,6 +1034,7 @@ function doJuryLogin(){
   closeOverlay('jury-name-modal');
   launchApp();
 }
+window.doJuryLogin=doJuryLogin;
 
 function doLogout(){
   ST.user=null;ST.role=null;ST.juryRoom=null;ST.juryName='';
@@ -1651,7 +1653,7 @@ function renderSchedule(){
 function exportScheduleCSV(){
   const roomId=document.getElementById('sch-room')?.value||'';
   const entries=getScheduleEntries().filter(e=>!roomId||e.roomId===roomId);
-  exportCSV(entries.map(e=>({'序':e.order,'考場':e.roomName,'班級':e.class,'座號':e.seat,'姓名':e.name,'樂器':e.instName,'別':typeName(e.type),'指定曲作曲家':e.ac||'','指定曲曲目':e.at||'','自選曲作曲家':e.fc||'','自選曲曲目':e.ft||''}),'考試排程');
+  exportCSV(entries.map(e=>({'序':e.order,'考場':e.roomName,'班級':e.class,'座號':e.seat,'姓名':e.name,'樂器':e.instName,'類別':typeName(e.type),'指定曲作曲家':e.ac||'','指定曲曲目':e.at||'','自選曲作曲家':e.fc||'','自選曲曲目':e.ft||''})),'考試排程');
 }
 
 function publishSchedule(){showToast('已公告至學生考試順序查詢頁 ✓','ok');renderStuSchedule();}
