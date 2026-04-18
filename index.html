@@ -366,12 +366,25 @@ if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
     // ★ 匿名登入：確保每個使用者都有 Firebase UID，
     //   Firestore 安全規則才能用 request.auth != null 來擋外部攻擊
     window._fbAuthReady = new Promise((resolve) => {
-      _auth.onAuthStateChanged(user => {
+      // onAuthStateChanged 會在 SDK 初始化後第一次確認身分狀態
+      // 用 unsubscribe 確保只處理一次，避免重複 resolve
+      const unsub = _auth.onAuthStateChanged(user => {
+        unsub(); // 取消後續監聽，只取第一次結果
         if (user) {
-          console.log('[Firebase Auth] 匿名 UID:', user.uid);
-          window._fbUid = user.uid;
-          resolve(user);
+          // 已有匿名 session（持久化），強制刷新 token 確保 Firestore 能認證
+          user.getIdToken(true)
+            .then(() => {
+              console.log('[Firebase Auth] 已有匿名 session UID:', user.uid);
+              window._fbUid = user.uid;
+              resolve(user);
+            })
+            .catch(() => {
+              // token 刷新失敗（離線），仍 resolve 讓程式繼續靠快取運作
+              window._fbUid = user.uid;
+              resolve(user);
+            });
         } else {
+          // 沒有 session，進行匿名登入
           _auth.signInAnonymously()
             .then(cred => {
               console.log('[Firebase Auth] 匿名登入成功 ✓ UID:', cred.user.uid);
